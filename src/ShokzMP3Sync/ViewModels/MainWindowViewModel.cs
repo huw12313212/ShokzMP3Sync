@@ -78,6 +78,8 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private double _syncProgress;
     [ObservableProperty] private bool _isYtDlpAvailable;
     [ObservableProperty] private string _toolStatusText = "";
+    [ObservableProperty] private bool _hasMissingDependencies;
+    [ObservableProperty] private string _missingDependenciesText = "";
 
     // Add channel dialog fields
     [ObservableProperty] private bool _isAddDialogOpen;
@@ -122,9 +124,25 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         IsYtDlpAvailable = _ytDlpService.IsAvailable();
-        ToolStatusText = IsYtDlpAvailable
-            ? "yt-dlp: OK"
-            : "yt-dlp: 未安裝 (請執行 brew install yt-dlp)";
+        var isFfmpegAvailable = YtDlpService.IsFfmpegAvailable();
+
+        // Build dependency check overlay
+        var missing = new System.Collections.Generic.List<string>();
+        if (!IsYtDlpAvailable) missing.Add("yt-dlp");
+        if (!isFfmpegAvailable) missing.Add("ffmpeg");
+
+        if (missing.Count > 0)
+        {
+            HasMissingDependencies = true;
+            MissingDependenciesText = $"缺少必要工具：{string.Join("、", missing)}\n\n"
+                + "請在終端機執行以下指令安裝：\n"
+                + $"brew install {string.Join(" ", missing)}\n\n"
+                + "安裝完成後請重新啟動應用程式。";
+        }
+
+        ToolStatusText = IsYtDlpAvailable && isFfmpegAvailable
+            ? "yt-dlp: OK | ffmpeg: OK"
+            : $"yt-dlp: {(IsYtDlpAvailable ? "OK" : "缺少")} | ffmpeg: {(isFfmpegAvailable ? "OK" : "缺少")}";
 
         CheckDevice();
         _deviceCheckTimer = new Timer(_ => CheckDevice(), null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));

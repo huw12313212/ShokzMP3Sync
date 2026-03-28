@@ -57,9 +57,20 @@ public class YtDlpService
 
     public bool IsAvailable()
     {
+        return IsCommandAvailable(_ytDlpPath);
+    }
+
+    public static bool IsFfmpegAvailable()
+    {
+        var ffmpegPath = ResolveExecutable("ffmpeg");
+        return IsCommandAvailable(ffmpegPath);
+    }
+
+    private static bool IsCommandAvailable(string command)
+    {
         try
         {
-            var psi = new ProcessStartInfo(_ytDlpPath, "--version")
+            var psi = new ProcessStartInfo(command, "--version")
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
