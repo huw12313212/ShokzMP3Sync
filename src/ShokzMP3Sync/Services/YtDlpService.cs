@@ -45,7 +45,8 @@ public class YtDlpService
     /// </summary>
     public async Task<string?> GetChannelNameAsync(string channelUrl, CancellationToken ct = default)
     {
-        var args = $"--playlist-items 0 --print channel \"{channelUrl}\"";
+        var tabUrl = channelUrl.TrimEnd('/') + "/videos";
+        var args = $"--playlist-items 1 --print channel \"{tabUrl}\"";
         var result = await RunAsync(args, ct);
         var name = result.Trim();
         return string.IsNullOrEmpty(name) ? null : name;
@@ -75,6 +76,40 @@ public class YtDlpService
         }
 
         return videos;
+    }
+
+    /// <summary>
+    /// Gets all video IDs and titles from a YouTube playlist.
+    /// </summary>
+    public async Task<List<VideoInfo>> GetPlaylistVideosAsync(string playlistUrl, CancellationToken ct = default)
+    {
+        var args = $"--flat-playlist --print id --print title \"{playlistUrl}\"";
+        var result = await RunAsync(args, ct);
+
+        var lines = result.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var videos = new List<VideoInfo>();
+
+        for (int i = 0; i + 1 < lines.Length; i += 2)
+        {
+            videos.Add(new VideoInfo
+            {
+                Id = lines[i].Trim(),
+                Title = lines[i + 1].Trim()
+            });
+        }
+
+        return videos;
+    }
+
+    /// <summary>
+    /// Gets the playlist title from a YouTube playlist URL.
+    /// </summary>
+    public async Task<string?> GetPlaylistNameAsync(string playlistUrl, CancellationToken ct = default)
+    {
+        var args = $"--flat-playlist --playlist-items 1 --print playlist_title \"{playlistUrl}\"";
+        var result = await RunAsync(args, ct);
+        var name = result.Trim();
+        return string.IsNullOrEmpty(name) ? null : name;
     }
 
     /// <summary>

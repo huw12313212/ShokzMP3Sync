@@ -45,6 +45,7 @@ public class DeviceService
             return new HashSet<string>();
 
         return Directory.GetFiles(folderPath, "*.mp3")
+            .Where(f => !Path.GetFileName(f).StartsWith("._"))
             .Select(f => VideoIdRegex.Match(Path.GetFileName(f)))
             .Where(m => m.Success)
             .Select(m => m.Groups[1].Value)
@@ -61,6 +62,7 @@ public class DeviceService
             return new Dictionary<string, string>();
 
         return Directory.GetFiles(folderPath, "*.mp3")
+            .Where(f => !Path.GetFileName(f).StartsWith("._"))
             .Select(f => new { Path = f, Match = VideoIdRegex.Match(Path.GetFileName(f)) })
             .Where(x => x.Match.Success)
             .ToDictionary(x => x.Match.Groups[1].Value, x => x.Path);

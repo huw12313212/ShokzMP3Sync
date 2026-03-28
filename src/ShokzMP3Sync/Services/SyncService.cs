@@ -130,4 +130,100 @@ public class SyncService
 
         return result;
     }
+
+    public async Task<SyncResult> SyncPlaylistAsync(
+        PlaylistConfig playlist,
+        string volumeName,
+        Action<string>? onStatus = null,
+        Action<double>? onProgress = null,
+        CancellationToken ct = default)
+    {
+        var result = new SyncResult { ChannelName = playlist.Name };
+
+        // 1. Get all videos from playlist
+        onStatus?.Invoke($"正在取得播放清單 {playlist.Name} 的影片...");
+        List<VideoInfo> playlistVideos;
+        try
+        {
+            playlistVideos = await _ytDlp.GetPlaylistVideosAsync(playlist.Url, ct);
+        }
+        catch (Exception ex)
+        {
+            result.Errors.Add($"無法取得播放清單: {ex.Message}");
+            return result;
+        }
+
+        var playlistIds = playlistVideos.Select(v => v.Id).ToHashSet();
+
+        // 2. Get existing files on device
+        var existingFiles = _device.GetExistingFiles(volumeName, playlist.FolderName);
+
+        // 3. Delete files not in playlist
+        var toDelete = existingFiles.Where(kv => !playlistIds.Contains(kv.Key)).ToList();
+        foreach (var (videoId, filePath) in toDelete)
+        {
+            onStatus?.Invoke($"刪除: {Path.GetFileName(filePath)}");
+            _device.DeleteFile(filePath);
+            var dir = Path.GetDirectoryName(filePath)!;
+            var resourceFork = Path.Combine(dir, "._" + Path.GetFileName(filePath));
+            _device.DeleteFile(resourceFork);
+            result.Deleted++;
+        }
+
+        // 4. Download new files
+        var toDownload = playlistVideos.Where(v => !existingFiles.ContainsKey(v.Id)).ToList();
+        _device.EnsureFolder(volumeName, playlist.FolderName);
+
+        var tempDir = Path.Combine(Path.GetTempPath(), "ShokzMP3Sync", playlist.FolderName);
+        Directory.CreateDirectory(tempDir);
+        var outputDir = Path.Combine(_device.GetDevicePath(volumeName), playlist.FolderName);
+
+        for (int i = 0; i < toDownload.Count; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var video = toDownload[i];
+
+            onStatus?.Invoke($"下載中 ({i + 1}/{toDownload.Count}): {video.Title}");
+            onProgress?.Invoke((double)i / toDownload.Count);
+
+            try
+            {
+                await _ytDlp.DownloadAsMp3Async(video.Id, tempDir,
+                    line =>
+                    {
+                        if (line.Contains('%'))
+                            onStatus?.Invoke($"下載中 ({i + 1}/{toDownload.Count}): {video.Title} - {line.Trim()}");
+                    }, ct);
+
+                var downloadedFile = Directory.GetFiles(tempDir, $"*[{video.Id}].mp3").FirstOrDefault();
+                if (downloadedFile != null)
+                {
+                    var destFile = Path.Combine(outputDir, Path.GetFileName(downloadedFile));
+                    File.Move(downloadedFile, destFile, overwrite: true);
+                    result.Downloaded++;
+                }
+                else
+                {
+                    result.Errors.Add($"找不到下載的檔案: {video.Title}");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                result.Errors.Add($"{video.Title}: {ex.Message}");
+            }
+        }
+
+        result.Skipped = existingFiles.Count(kv => playlistIds.Contains(kv.Key));
+
+        try { Directory.Delete(tempDir, true); } catch { }
+
+        onProgress?.Invoke(1.0);
+        onStatus?.Invoke($"{playlist.Name} 同步完成: 下載 {result.Downloaded}, 刪除 {result.Deleted}, 略過 {result.Skipped}");
+
+        return result;
+    }
 }

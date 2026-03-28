@@ -7,4 +7,5 @@ public class AppConfig
     public string DeviceVolumeName { get; set; } = "SWIM PRO";
     public string YtDlpPath { get; set; } = "yt-dlp";
     public List<ChannelConfig> Channels { get; set; } = new();
+    public List<PlaylistConfig> Playlists { get; set; } = new();
 }
