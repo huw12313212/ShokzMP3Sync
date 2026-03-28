@@ -14,9 +14,45 @@ public class YtDlpService
 {
     private readonly string _ytDlpPath;
 
+    // macOS .app bundles have a minimal PATH that excludes Homebrew.
+    // We prepend common Homebrew paths so yt-dlp and ffmpeg can be found.
+    private static readonly string[] ExtraPaths = new[]
+    {
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/opt/homebrew/sbin",
+        "/usr/local/sbin"
+    };
+
     public YtDlpService(string ytDlpPath = "yt-dlp")
     {
-        _ytDlpPath = ytDlpPath;
+        _ytDlpPath = ResolveExecutable(ytDlpPath);
+    }
+
+    private static string ResolveExecutable(string name)
+    {
+        // If already an absolute path, use as-is
+        if (Path.IsPathRooted(name))
+            return name;
+
+        // Try to find the executable in extra paths (covers .app bundle case)
+        foreach (var dir in ExtraPaths)
+        {
+            var candidate = Path.Combine(dir, name);
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        // Fall back to bare name (relies on PATH)
+        return name;
+    }
+
+    private static void EnrichPath(ProcessStartInfo psi)
+    {
+        var current = psi.Environment.TryGetValue("PATH", out var p) ? p ?? "" : "";
+        var missing = ExtraPaths.Where(d => !current.Contains(d));
+        if (missing.Any())
+            psi.Environment["PATH"] = string.Join(":", missing) + ":" + current;
     }
 
     public bool IsAvailable()
@@ -30,6 +66,7 @@ public class YtDlpService
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            EnrichPath(psi);
             using var process = Process.Start(psi);
             process?.WaitForExit(5000);
             return process?.ExitCode == 0;
@@ -136,6 +173,7 @@ public class YtDlpService
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        EnrichPath(psi);
 
         using var process = Process.Start(psi)
                             ?? throw new InvalidOperationException("Failed to start yt-dlp");
@@ -161,6 +199,7 @@ public class YtDlpService
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        EnrichPath(psi);
 
         using var process = Process.Start(psi)
                             ?? throw new InvalidOperationException("Failed to start yt-dlp");
