@@ -70,7 +70,7 @@ public class YtDlpService
     {
         try
         {
-            var psi = new ProcessStartInfo(command, "--version")
+            var psi = new ProcessStartInfo(command, "-version")
             {
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -80,7 +80,9 @@ public class YtDlpService
             EnrichPath(psi);
             using var process = Process.Start(psi);
             process?.WaitForExit(5000);
-            return process?.ExitCode == 0;
+            // Some tools (e.g. ffmpeg) return non-zero for --version;
+            // if the process started at all, the tool is installed.
+            return process != null;
         }
         catch
         {
