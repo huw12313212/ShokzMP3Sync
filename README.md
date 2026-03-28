@@ -4,6 +4,16 @@
 
 插上耳機 → 打開程式 → 按下同步 → 拔掉耳機去游泳。
 
+## 故事
+
+買了 SHOKZ OPEN SWIM PRO 游泳用水下耳機，結果才發現水裡根本不能用藍牙，什麼都聽不了。
+
+打開說明書，居然寫要「手動把 MP3 放進耳機裡」才能在水裡播放。什麼上個世紀的使用情境。
+
+還好有 [Claude Code](https://claude.ai/code)。嘴了半小時，做了一個工具，讓耳機接上電腦充電時自動抓 YouTube 指定頻道的最新內容跟播放清單，轉成 MP3 塞進耳機。
+
+問題解決，好舒壓。
+
 ## 功能
 
 - **頻道同步** — 設定 YouTube 頻道，自動保留最新 N 部影片
@@ -11,6 +21,7 @@
 - **智慧差異比對** — 透過影片 ID 辨識，不重複下載已存在的檔案
 - **自動清理** — 過期影片、不在清單中的影片自動從裝置刪除
 - **裝置偵測** — 自動偵測 SWIM PRO 連線狀態與剩餘空間
+- **啟動檢查** — 自動偵測 yt-dlp / ffmpeg 是否安裝，缺少時顯示安裝提示
 - **GUI 介面** — Avalonia UI，支援新增/編輯/刪除頻道與播放清單
 
 ## 螢幕截圖概念
@@ -34,23 +45,47 @@
 └──────────────────────────────────────────┘
 ```
 
-## 環境需求
+## 系統需求
 
-- macOS
-- [.NET 7 SDK](https://dotnet.microsoft.com/download/dotnet/7.0)
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp)
-- [ffmpeg](https://ffmpeg.org/)
+> **目前僅測試過 macOS (Apple Silicon / arm64)。**
+> Windows 因裝置掛載路徑不同 (`/Volumes/` vs 磁碟機代號) **尚未支援**。
+> Linux 理論上可行但未經驗證。
+
+### 必要工具
+
+- macOS (Apple Silicon)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) — YouTube 下載
+- [ffmpeg](https://ffmpeg.org/) — 音訊轉檔
 
 ```bash
 brew install yt-dlp ffmpeg
 ```
 
-## 快速開始
+應用程式啟動時會自動檢查以上工具，若未安裝會顯示提示並阻止操作。
+
+### 開發環境（僅從原始碼建置時需要）
+
+- [.NET 7 SDK](https://dotnet.microsoft.com/download/dotnet/7.0)
+
+## 安裝
+
+### 使用預建 .app（推薦）
+
+從 [Releases](../../releases) 下載 `ShokzMP3Sync.app`，拖入 `/Applications/` 即可使用。
+不需要安裝 .NET runtime。
+
+### 從原始碼建置
 
 ```bash
-git clone https://redcandlegames2025.myqnapcloud.com/huw12313212/shokzmp3sync.git
-cd shokzmp3sync
+git clone https://github.com/huw12313212/ShokzMP3Sync.git
+cd ShokzMP3Sync
+
+# 直接執行
 dotnet run --project src/ShokzMP3Sync
+
+# 或打包成 .app
+bash build-app.sh
+cp -r build/ShokzMP3Sync.app /Applications/
 ```
 
 ## 執行測試
@@ -107,3 +142,10 @@ src/ShokzMP3Sync/
 - .NET 7 + Avalonia UI 11
 - CommunityToolkit.Mvvm (MVVM)
 - yt-dlp + ffmpeg (下載轉檔)
+- 本專案由 [Claude Code](https://claude.ai/code) 協助開發
+
+## 授權
+
+本專案採用 [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) 授權。
+
+你可以自由分享、修改本專案，但 **不得用於商業用途**。詳見 [LICENSE](LICENSE)。
