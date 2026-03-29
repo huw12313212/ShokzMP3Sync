@@ -36,7 +36,7 @@ Both modes identify existing files by extracting YouTube video IDs from filename
 - `YtDlpService` — wraps yt-dlp CLI for channel info, playlist listing, and MP3 download
 - `DeviceService` — detects SWIM PRO at `/Volumes/SWIM PRO/`, manages files on device
 - `SyncService` — orchestrates download-to-temp → move-to-device flow
-- `ConfigService` — persists `AppConfig` as JSON at `~/Library/Application Support/ShokzMP3Sync/config.json`
+- `ConfigService` — persists `AppConfig` as JSON at `~/.config/ShokzMP3Sync/config.json`
 
 **Device specifics:** SWIM PRO mounts as USB storage. Each channel/playlist gets its own folder. Files named `{title} [{videoId}].mp3`. Must skip macOS `._` resource fork files when scanning.
 

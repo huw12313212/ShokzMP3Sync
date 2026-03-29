@@ -18,10 +18,15 @@
 
 - **頻道同步** — 設定 YouTube 頻道，自動保留最新 N 部影片
 - **播放清單同步** — 以線上清單為準完整同步，清單移除的自動刪除
+- **包含直播影片** — 頻道可選擇是否包含直播錄影，不只抓一般上傳
+- **音量正規化** — 可對頻道/播放清單啟用 EBU R128 loudnorm，自動平衡音量大小
+- **會員影片自動跳過** — 遇到會員專屬影片自動跳過，繼續往下抓直到湊滿指定數量
+- **最新動態資料夾** — 從所有頻道收集最新上傳，按時間排序放入一個資料夾（依最少時數填滿）
 - **智慧差異比對** — 透過影片 ID 辨識，不重複下載已存在的檔案
 - **自動清理** — 過期影片、不在清單中的影片自動從裝置刪除
 - **裝置偵測** — 自動偵測 SWIM PRO 連線狀態與剩餘空間
 - **啟動檢查** — 自動偵測 yt-dlp / ffmpeg 是否安裝，缺少時顯示安裝提示
+- **同步 Log** — 錯誤記錄至 `~/.config/ShokzMP3Sync/sync.log`，方便除錯
 - **GUI 介面** — Avalonia UI，支援新增/編輯/刪除頻道與播放清單
 
 ## 螢幕截圖概念
@@ -39,7 +44,13 @@
 │ YouTube 播放清單            [+ 新增播放清單] │
 │ ┌──────────────────────────────────────┐ │
 │ │ 包子音樂     32 首 / 完整同步 [同步]   │ │
+│ │ 游泳         5 首 / 完整同步          │ │
+│ │              / 音量正規化     [同步]   │ │
 │ └──────────────────────────────────────┘ │
+│                                          │
+│ ☑ 最新動態資料夾  18 首                    │
+│   資料夾名稱: 最新動態                      │
+│   最少時數: 8.0 小時                       │
 │                                          │
 │ [全部同步]                                │
 └──────────────────────────────────────────┘
@@ -96,13 +107,13 @@ cp -r build/ShokzMP3Sync.app /Applications/
 dotnet run --project tests/ShokzMP3Sync.IntegrationTests
 ```
 
-測試涵蓋 29 項：裝置偵測、檔案讀寫、yt-dlp 整合、頻道同步流程、播放清單同步流程、設定檔存取。
+測試涵蓋 43 項：裝置偵測、檔案讀寫、yt-dlp 整合、頻道同步流程、播放清單同步流程、設定檔存取、音量正規化 (LUFS 驗證)、直播影片擷取、最新動態資料夾排序。
 
 ## 專案結構
 
 ```
 src/ShokzMP3Sync/
-├── Models/          # ChannelConfig, PlaylistConfig, AppConfig, VideoInfo
+├── Models/          # ChannelConfig, PlaylistConfig, LatestFeedConfig, AppConfig, VideoInfo
 ├── Services/
 │   ├── YtDlpService.cs    # yt-dlp 封裝 (頻道/播放清單/下載)
 │   ├── DeviceService.cs   # 裝置偵測、檔案操作
@@ -115,18 +126,20 @@ src/ShokzMP3Sync/
 
 ## 設定檔
 
-儲存於 `~/Library/Application Support/ShokzMP3Sync/config.json`：
+儲存於 `~/.config/ShokzMP3Sync/config.json`：
 
 ```json
 {
   "deviceVolumeName": "SWIM PRO",
   "channels": [
-    { "url": "https://www.youtube.com/@Gooaye", "name": "股癌", "folderName": "股癌", "keepCount": 10 },
-    { "url": "https://www.youtube.com/@MannysNewsletter", "name": "曼報", "folderName": "曼報", "keepCount": 5 }
+    { "url": "https://www.youtube.com/@Gooaye", "name": "股癌", "folderName": "股癌", "keepCount": 10, "normalizeAudio": false, "includeLivestreams": false },
+    { "url": "https://www.youtube.com/@yutinghaofinance", "name": "財經皓角", "folderName": "財經皓角", "keepCount": 5, "normalizeAudio": false, "includeLivestreams": true }
   ],
   "playlists": [
-    { "url": "https://www.youtube.com/...list=PL...", "name": "包子音樂", "folderName": "包子音樂" }
-  ]
+    { "url": "https://www.youtube.com/...list=PL...", "name": "包子音樂", "folderName": "包子音樂", "normalizeAudio": false },
+    { "url": "https://www.youtube.com/...list=PL...", "name": "游泳", "folderName": "游泳", "normalizeAudio": true }
+  ],
+  "latestFeed": { "enabled": true, "folderName": "最新動態", "minHours": 8.0 }
 }
 ```
 
@@ -136,6 +149,10 @@ src/ShokzMP3Sync/
 |------|------|------|------|
 | 頻道 | 最新 N 部中裝置上沒有的 | 不在最新 N 部的舊檔案 | 已存在且仍在範圍內 |
 | 播放清單 | 清單中裝置上沒有的 | 裝置上有但清單中已移除的 | 已存在且仍在清單中 |
+| 最新動態 | 從各頻道複製到動態資料夾 | 每次全部同步時重建 | — |
+
+- 頻道同步多抓 KeepCount×3 的影片，會員專屬影片自動跳過並繼續往下，直到湊滿指定數量
+- 最新動態資料夾的檔案以 `001_`、`002_` 數字前綴命名，讓播放器的字母排序 = 時間排序（001 = 最新）
 
 ## 技術棧
 
