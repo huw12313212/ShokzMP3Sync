@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using ShokzMP3Sync.Models;
 using ShokzMP3Sync.Services;
@@ -77,6 +79,19 @@ class Program
         // Phase 10: Config service (with playlists)
         await RunTest("10.1 儲存設定檔 (含播放清單)", TestSaveConfig);
         await RunTest("10.2 讀取設定檔 (含播放清單)", TestLoadConfig);
+
+        // Phase 11: Audio normalization
+        await RunTest("11.1 下載 MP3 不啟用正規化", TestDownloadWithoutNormalize);
+        await RunTest("11.2 下載 MP3 啟用正規化", TestDownloadWithNormalize);
+        await RunTest("11.3 驗證正規化後響度接近 -16 LUFS", TestNormalizedLoudness);
+        await RunTest("11.4 正規化前後檔案皆為有效 MP3", TestBothFilesValid);
+        await RunTest("11.5 Config 持久化 NormalizeAudio 設定", TestConfigNormalizeAudio);
+        await RunTest("11.6 清理正規化測試檔案", TestCleanupNormalize);
+
+        // Phase 12: Include livestreams
+        await RunTest("12.1 不含直播 - 只取得一般影片", TestVideosWithoutLivestreams);
+        await RunTest("12.2 含直播 - 取得直播+一般影片", TestVideosWithLivestreams);
+        await RunTest("12.3 Config 持久化 IncludeLivestreams 設定", TestConfigIncludeLivestreams);
 
         // Summary
         Console.WriteLine("\n" + new string('=', 50));
@@ -525,8 +540,34 @@ class Program
 
     // ===== Phase 10: Config =====
 
+    // Config tests use backup/restore to avoid overwriting user's real config
+    private static readonly string ConfigPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "ShokzMP3Sync", "config.json");
+    private static string? _configBackupPath;
+
+    static void BackupConfig()
+    {
+        if (File.Exists(ConfigPath))
+        {
+            _configBackupPath = ConfigPath + ".test_backup";
+            File.Copy(ConfigPath, _configBackupPath, overwrite: true);
+        }
+    }
+
+    static void RestoreConfig()
+    {
+        if (_configBackupPath != null && File.Exists(_configBackupPath))
+        {
+            File.Copy(_configBackupPath, ConfigPath, overwrite: true);
+            File.Delete(_configBackupPath);
+            _configBackupPath = null;
+        }
+    }
+
     static Task TestSaveConfig()
     {
+        BackupConfig();
         var svc = new ConfigService();
         var config = new AppConfig
         {
@@ -548,18 +589,242 @@ class Program
 
     static Task TestLoadConfig()
     {
-        var svc = new ConfigService();
-        var config = svc.Load();
-        Assert(config.DeviceVolumeName == VolumeName, $"裝置名稱不正確: {config.DeviceVolumeName}");
-        Assert(config.Channels.Count == 2, $"頻道數量不正確: {config.Channels.Count}");
-        Assert(config.Channels[0].Name == "股癌", $"頻道1名稱不正確: {config.Channels[0].Name}");
-        Assert(config.Channels[0].KeepCount == 10, $"頻道1保留數不正確: {config.Channels[0].KeepCount}");
-        Assert(config.Channels[1].Name == "曼報", $"頻道2名稱不正確: {config.Channels[1].Name}");
-        Assert(config.Channels[1].KeepCount == 5, $"頻道2保留數不正確: {config.Channels[1].KeepCount}");
-        Assert(config.Playlists.Count == 1, $"播放清單數量不正確: {config.Playlists.Count}");
-        Assert(config.Playlists[0].Name == "包子音樂", $"播放清單名稱不正確: {config.Playlists[0].Name}");
-        Assert(config.Playlists[0].Url == TestPlaylistUrl, "播放清單 URL 不正確");
-        Console.Write("[設定正確 - 含播放清單] ");
+        try
+        {
+            var svc = new ConfigService();
+            var config = svc.Load();
+            Assert(config.DeviceVolumeName == VolumeName, $"裝置名稱不正確: {config.DeviceVolumeName}");
+            Assert(config.Channels.Count == 2, $"頻道數量不正確: {config.Channels.Count}");
+            Assert(config.Channels[0].Name == "股癌", $"頻道1名稱不正確: {config.Channels[0].Name}");
+            Assert(config.Channels[0].KeepCount == 10, $"頻道1保留數不正確: {config.Channels[0].KeepCount}");
+            Assert(config.Channels[1].Name == "曼報", $"頻道2名稱不正確: {config.Channels[1].Name}");
+            Assert(config.Channels[1].KeepCount == 5, $"頻道2保留數不正確: {config.Channels[1].KeepCount}");
+            Assert(config.Playlists.Count == 1, $"播放清單數量不正確: {config.Playlists.Count}");
+            Assert(config.Playlists[0].Name == "包子音樂", $"播放清單名稱不正確: {config.Playlists[0].Name}");
+            Assert(config.Playlists[0].Url == TestPlaylistUrl, "播放清單 URL 不正確");
+            Console.Write("[設定正確 - 含播放清單] ");
+        }
+        finally
+        {
+            RestoreConfig();
+        }
+        return Task.CompletedTask;
+    }
+
+    // ===== Phase 11: Audio normalization =====
+
+    private static readonly string NormTestDir = Path.Combine(Path.GetTempPath(), "ShokzMP3Sync_norm_test");
+    private static string? _normOriginalFile;
+    private static string? _normNormalizedFile;
+    // Use a short, well-known public video for testing
+    private const string NormTestVideoId = "jNQXAC9IVRw"; // "Me at the zoo" - first YouTube video, 19 seconds
+
+    static async Task TestDownloadWithoutNormalize()
+    {
+        var dir = Path.Combine(NormTestDir, "original");
+        Directory.CreateDirectory(dir);
+
+        var ytDlp = new YtDlpService();
+        await ytDlp.DownloadAsMp3Async(NormTestVideoId, dir,
+            line => { }, normalizeAudio: false);
+
+        _normOriginalFile = Directory.GetFiles(dir, "*.mp3").FirstOrDefault();
+        Assert(_normOriginalFile != null, "下載失敗：找不到 MP3 檔案");
+
+        var size = new FileInfo(_normOriginalFile!).Length;
+        Assert(size > 10_000, $"檔案太小 ({size} bytes)");
+        Console.Write($"[{FormatBytes(size)}] ");
+    }
+
+    static async Task TestDownloadWithNormalize()
+    {
+        var dir = Path.Combine(NormTestDir, "normalized");
+        Directory.CreateDirectory(dir);
+
+        var ytDlp = new YtDlpService();
+        await ytDlp.DownloadAsMp3Async(NormTestVideoId, dir,
+            line => { if (line.Contains("正規化")) Console.Write("."); },
+            normalizeAudio: true);
+
+        _normNormalizedFile = Directory.GetFiles(dir, "*.mp3").FirstOrDefault();
+        Assert(_normNormalizedFile != null, "正規化下載失敗：找不到 MP3 檔案");
+
+        var size = new FileInfo(_normNormalizedFile!).Length;
+        Assert(size > 10_000, $"正規化後檔案太小 ({size} bytes)");
+        Console.Write($"[{FormatBytes(size)}] ");
+    }
+
+    static async Task TestNormalizedLoudness()
+    {
+        Assert(_normNormalizedFile != null, "前一步正規化下載未完成");
+
+        // Use ffmpeg to measure loudness of normalized file
+        var loudness = await MeasureLoudness(_normNormalizedFile!);
+        Assert(loudness != null, "無法測量響度");
+        Console.Write($"[LUFS: {loudness:F1}] ");
+
+        // EBU R128 target is -16 LUFS, allow some tolerance (±3)
+        Assert(loudness > -19.0 && loudness < -13.0,
+            $"正規化後響度 {loudness:F1} LUFS 偏離目標 -16 LUFS 過多");
+
+        // Also measure original for comparison
+        if (_normOriginalFile != null)
+        {
+            var origLoudness = await MeasureLoudness(_normOriginalFile);
+            if (origLoudness != null)
+                Console.Write($"[原始 LUFS: {origLoudness:F1}] ");
+        }
+    }
+
+    static Task TestBothFilesValid()
+    {
+        Assert(_normOriginalFile != null && File.Exists(_normOriginalFile), "原始檔案不存在");
+        Assert(_normNormalizedFile != null && File.Exists(_normNormalizedFile), "正規化檔案不存在");
+
+        // Check MP3 magic bytes (ID3 tag or MPEG sync word)
+        var origBytes = File.ReadAllBytes(_normOriginalFile!).Take(3).ToArray();
+        var normBytes = File.ReadAllBytes(_normNormalizedFile!).Take(3).ToArray();
+
+        bool isValidMp3(byte[] b) =>
+            (b[0] == 0x49 && b[1] == 0x44 && b[2] == 0x33) || // ID3
+            (b[0] == 0xFF && (b[1] & 0xE0) == 0xE0);          // MPEG sync
+
+        Assert(isValidMp3(origBytes), "原始檔案不是有效的 MP3");
+        Assert(isValidMp3(normBytes), "正規化檔案不是有效的 MP3");
+        Console.Write("[兩個檔案皆為有效 MP3] ");
+        return Task.CompletedTask;
+    }
+
+    static Task TestConfigNormalizeAudio()
+    {
+        BackupConfig();
+        try
+        {
+            var svc = new ConfigService();
+            var config = new AppConfig
+            {
+                Channels = new List<ChannelConfig>
+                {
+                    new() { Url = "https://example.com", Name = "Test", FolderName = "test", KeepCount = 5, NormalizeAudio = true },
+                    new() { Url = "https://example.com/2", Name = "Test2", FolderName = "test2", KeepCount = 3, NormalizeAudio = false }
+                },
+                Playlists = new List<PlaylistConfig>
+                {
+                    new() { Url = "https://example.com/pl", Name = "PL", FolderName = "pl", NormalizeAudio = true }
+                }
+            };
+            svc.Save(config);
+
+            var loaded = svc.Load();
+            Assert(loaded.Channels[0].NormalizeAudio == true, "頻道1 NormalizeAudio 應為 true");
+            Assert(loaded.Channels[1].NormalizeAudio == false, "頻道2 NormalizeAudio 應為 false");
+            Assert(loaded.Playlists[0].NormalizeAudio == true, "播放清單 NormalizeAudio 應為 true");
+            Console.Write("[NormalizeAudio 持久化正確] ");
+        }
+        finally
+        {
+            RestoreConfig();
+        }
+        return Task.CompletedTask;
+    }
+
+    static Task TestCleanupNormalize()
+    {
+        try { Directory.Delete(NormTestDir, true); } catch { }
+        Assert(!Directory.Exists(NormTestDir), "清理正規化測試資料夾失敗");
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Uses ffmpeg loudnorm to measure integrated loudness (LUFS).
+    /// </summary>
+    static async Task<double?> MeasureLoudness(string filePath)
+    {
+        var ffmpegPath = File.Exists("/opt/homebrew/bin/ffmpeg") ? "/opt/homebrew/bin/ffmpeg" : "ffmpeg";
+        var psi = new ProcessStartInfo(ffmpegPath,
+            $"-i \"{filePath}\" -af loudnorm=print_format=summary -f null -")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = Process.Start(psi);
+        if (process == null) return null;
+
+        var stderr = await process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+
+        // Parse "Input Integrated:    -XX.X LUFS" from ffmpeg output
+        var match = Regex.Match(stderr, @"Input Integrated:\s+(-?\d+\.?\d*)\s+LUFS");
+        if (match.Success && double.TryParse(match.Groups[1].Value, out var lufs))
+            return lufs;
+
+        return null;
+    }
+
+    // ===== Phase 12: Include livestreams =====
+
+    // 財經皓角 has both regular videos and livestreams
+    private const string LivestreamTestChannelUrl = "https://www.youtube.com/@yutinghaofinance";
+
+    static async Task TestVideosWithoutLivestreams()
+    {
+        var svc = new YtDlpService();
+        var videos = await svc.GetLatestVideosAsync(LivestreamTestChannelUrl, 5, includeLivestreams: false);
+        Assert(videos.Count > 0, "無法取得影片");
+        // Without livestreams, we should only get regular uploads from /videos tab
+        Console.Write($"[{videos.Count} 部: {videos[0].Title}] ");
+
+        // Store IDs for comparison
+        _videosOnlyIds = videos.Select(v => v.Id).ToHashSet();
+    }
+
+    private static HashSet<string> _videosOnlyIds = new();
+
+    static async Task TestVideosWithLivestreams()
+    {
+        var svc = new YtDlpService();
+        var videos = await svc.GetLatestVideosAsync(LivestreamTestChannelUrl, 10, includeLivestreams: true);
+        Assert(videos.Count > 0, "無法取得影片");
+        Console.Write($"[{videos.Count} 部: {videos[0].Title}] ");
+
+        // With livestreams, we should get more content (or different content)
+        var allIds = videos.Select(v => v.Id).ToHashSet();
+
+        // There should be at least some IDs that are NOT in the videos-only set (livestreams)
+        var livestreamIds = allIds.Where(id => !_videosOnlyIds.Contains(id)).ToList();
+        Console.Write($"[其中 {livestreamIds.Count} 個為直播/其他內容] ");
+        // 財經皓角 is known to have livestreams, so we expect at least 1
+        Assert(livestreamIds.Count > 0, "含直播模式應包含直播影片，但沒有找到任何不同的內容");
+    }
+
+    static Task TestConfigIncludeLivestreams()
+    {
+        BackupConfig();
+        try
+        {
+            var svc = new ConfigService();
+            var config = new AppConfig
+            {
+                Channels = new List<ChannelConfig>
+                {
+                    new() { Url = "https://example.com", Name = "T1", FolderName = "t1", KeepCount = 5, IncludeLivestreams = true },
+                    new() { Url = "https://example.com/2", Name = "T2", FolderName = "t2", KeepCount = 3, IncludeLivestreams = false }
+                }
+            };
+            svc.Save(config);
+
+            var loaded = svc.Load();
+            Assert(loaded.Channels[0].IncludeLivestreams == true, "頻道1 IncludeLivestreams 應為 true");
+            Assert(loaded.Channels[1].IncludeLivestreams == false, "頻道2 IncludeLivestreams 應為 false");
+            Console.Write("[IncludeLivestreams 持久化正確] ");
+        }
+        finally
+        {
+            RestoreConfig();
+        }
         return Task.CompletedTask;
     }
 

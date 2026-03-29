@@ -16,6 +16,8 @@ public partial class ChannelViewModel : ObservableObject
     [ObservableProperty] private string _name = "";
     [ObservableProperty] private string _folderName = "";
     [ObservableProperty] private int _keepCount = 10;
+    [ObservableProperty] private bool _normalizeAudio;
+    [ObservableProperty] private bool _includeLivestreams;
     [ObservableProperty] private int _currentCount;
     [ObservableProperty] private bool _isSyncing;
     [ObservableProperty] private string _statusText = "";
@@ -25,7 +27,9 @@ public partial class ChannelViewModel : ObservableObject
         Url = Url,
         Name = Name,
         FolderName = FolderName,
-        KeepCount = KeepCount
+        KeepCount = KeepCount,
+        NormalizeAudio = NormalizeAudio,
+        IncludeLivestreams = IncludeLivestreams
     };
 
     public static ChannelViewModel FromConfig(ChannelConfig config) => new()
@@ -33,7 +37,9 @@ public partial class ChannelViewModel : ObservableObject
         Url = config.Url,
         Name = config.Name,
         FolderName = config.FolderName,
-        KeepCount = config.KeepCount
+        KeepCount = config.KeepCount,
+        NormalizeAudio = config.NormalizeAudio,
+        IncludeLivestreams = config.IncludeLivestreams
     };
 }
 
@@ -42,6 +48,7 @@ public partial class PlaylistViewModel : ObservableObject
     [ObservableProperty] private string _url = "";
     [ObservableProperty] private string _name = "";
     [ObservableProperty] private string _folderName = "";
+    [ObservableProperty] private bool _normalizeAudio;
     [ObservableProperty] private int _currentCount;
     [ObservableProperty] private bool _isSyncing;
     [ObservableProperty] private string _statusText = "";
@@ -50,14 +57,16 @@ public partial class PlaylistViewModel : ObservableObject
     {
         Url = Url,
         Name = Name,
-        FolderName = FolderName
+        FolderName = FolderName,
+        NormalizeAudio = NormalizeAudio
     };
 
     public static PlaylistViewModel FromConfig(PlaylistConfig config) => new()
     {
         Url = config.Url,
         Name = config.Name,
-        FolderName = config.FolderName
+        FolderName = config.FolderName,
+        NormalizeAudio = config.NormalizeAudio
     };
 }
 
@@ -87,6 +96,8 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _newChannelName = "";
     [ObservableProperty] private string _newChannelFolder = "";
     [ObservableProperty] private int _newChannelKeepCount = 10;
+    [ObservableProperty] private bool _newChannelNormalizeAudio;
+    [ObservableProperty] private bool _newChannelIncludeLivestreams;
     [ObservableProperty] private bool _isResolvingChannel;
     [ObservableProperty] private int _editingIndex = -1;
 
@@ -95,6 +106,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private string _newPlaylistUrl = "";
     [ObservableProperty] private string _newPlaylistName = "";
     [ObservableProperty] private string _newPlaylistFolder = "";
+    [ObservableProperty] private bool _newPlaylistNormalizeAudio;
     [ObservableProperty] private bool _isResolvingPlaylist;
     [ObservableProperty] private int _editingPlaylistIndex = -1;
 
@@ -200,6 +212,8 @@ public partial class MainWindowViewModel : ObservableObject
         NewChannelName = "";
         NewChannelFolder = "";
         NewChannelKeepCount = 10;
+        NewChannelNormalizeAudio = false;
+        NewChannelIncludeLivestreams = false;
         IsAddDialogOpen = true;
     }
 
@@ -211,6 +225,8 @@ public partial class MainWindowViewModel : ObservableObject
         NewChannelName = channel.Name;
         NewChannelFolder = channel.FolderName;
         NewChannelKeepCount = channel.KeepCount;
+        NewChannelNormalizeAudio = channel.NormalizeAudio;
+        NewChannelIncludeLivestreams = channel.IncludeLivestreams;
         IsAddDialogOpen = true;
     }
 
@@ -249,13 +265,17 @@ public partial class MainWindowViewModel : ObservableObject
             ch.Name = NewChannelName;
             ch.FolderName = folder;
             ch.KeepCount = NewChannelKeepCount;
+            ch.NormalizeAudio = NewChannelNormalizeAudio;
+            ch.IncludeLivestreams = NewChannelIncludeLivestreams;
         }
         else
         {
             Channels.Add(new ChannelViewModel
             {
                 Url = NewChannelUrl, Name = NewChannelName,
-                FolderName = folder, KeepCount = NewChannelKeepCount
+                FolderName = folder, KeepCount = NewChannelKeepCount,
+                NormalizeAudio = NewChannelNormalizeAudio,
+                IncludeLivestreams = NewChannelIncludeLivestreams
             });
         }
 
@@ -284,6 +304,7 @@ public partial class MainWindowViewModel : ObservableObject
         NewPlaylistUrl = "";
         NewPlaylistName = "";
         NewPlaylistFolder = "";
+        NewPlaylistNormalizeAudio = false;
         IsAddPlaylistDialogOpen = true;
     }
 
@@ -294,6 +315,7 @@ public partial class MainWindowViewModel : ObservableObject
         NewPlaylistUrl = playlist.Url;
         NewPlaylistName = playlist.Name;
         NewPlaylistFolder = playlist.FolderName;
+        NewPlaylistNormalizeAudio = playlist.NormalizeAudio;
         IsAddPlaylistDialogOpen = true;
     }
 
@@ -331,12 +353,14 @@ public partial class MainWindowViewModel : ObservableObject
             pl.Url = NewPlaylistUrl;
             pl.Name = NewPlaylistName;
             pl.FolderName = folder;
+            pl.NormalizeAudio = NewPlaylistNormalizeAudio;
         }
         else
         {
             Playlists.Add(new PlaylistViewModel
             {
-                Url = NewPlaylistUrl, Name = NewPlaylistName, FolderName = folder
+                Url = NewPlaylistUrl, Name = NewPlaylistName, FolderName = folder,
+                NormalizeAudio = NewPlaylistNormalizeAudio
             });
         }
 
@@ -384,8 +408,7 @@ public partial class MainWindowViewModel : ObservableObject
                     _syncCts.Token);
 
                 ch.IsSyncing = false;
-                ch.StatusText = $"下載 {result.Downloaded}, 刪除 {result.Deleted}, 略過 {result.Skipped}";
-                if (result.Errors.Any()) ch.StatusText += $" (錯誤 {result.Errors.Count})";
+                ch.StatusText = FormatSyncResult(result);
                 UpdateChannelCurrentCount(ch);
             }
 
@@ -402,8 +425,7 @@ public partial class MainWindowViewModel : ObservableObject
                     _syncCts.Token);
 
                 pl.IsSyncing = false;
-                pl.StatusText = $"下載 {result.Downloaded}, 刪除 {result.Deleted}, 略過 {result.Skipped}";
-                if (result.Errors.Any()) pl.StatusText += $" (錯誤 {result.Errors.Count})";
+                pl.StatusText = FormatSyncResult(result);
                 UpdatePlaylistCurrentCount(pl);
             }
 
@@ -437,8 +459,7 @@ public partial class MainWindowViewModel : ObservableObject
                 progress => SyncProgress = progress,
                 _syncCts.Token);
 
-            channel.StatusText = $"下載 {result.Downloaded}, 刪除 {result.Deleted}, 略過 {result.Skipped}";
-            if (result.Errors.Any()) channel.StatusText += $" (錯誤 {result.Errors.Count})";
+            channel.StatusText = FormatSyncResult(result);
             UpdateChannelCurrentCount(channel);
         }
         catch (OperationCanceledException) { channel.StatusText = "已取消"; }
@@ -461,8 +482,7 @@ public partial class MainWindowViewModel : ObservableObject
                 progress => SyncProgress = progress,
                 _syncCts.Token);
 
-            playlist.StatusText = $"下載 {result.Downloaded}, 刪除 {result.Deleted}, 略過 {result.Skipped}";
-            if (result.Errors.Any()) playlist.StatusText += $" (錯誤 {result.Errors.Count})";
+            playlist.StatusText = FormatSyncResult(result);
             UpdatePlaylistCurrentCount(playlist);
         }
         catch (OperationCanceledException) { playlist.StatusText = "已取消"; }
@@ -480,6 +500,18 @@ public partial class MainWindowViewModel : ObservableObject
         _config.Channels = Channels.Select(c => c.ToConfig()).ToList();
         _config.Playlists = Playlists.Select(p => p.ToConfig()).ToList();
         _configService.Save(_config);
+    }
+
+    private static string FormatSyncResult(SyncResult result)
+    {
+        var text = $"下載 {result.Downloaded}, 刪除 {result.Deleted}, 略過 {result.Skipped}";
+        if (result.Errors.Any())
+        {
+            text += $" (錯誤 {result.Errors.Count}: {result.Errors.First()}";
+            if (result.Errors.Count > 1) text += $" ...等";
+            text += ")";
+        }
+        return text;
     }
 
     private static string FormatSize(long bytes)

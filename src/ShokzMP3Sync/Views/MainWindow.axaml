@@ -74,6 +74,12 @@
                                                        Foreground="Gray" VerticalAlignment="Center" FontSize="12"/>
                                             <TextBlock Text="{Binding KeepCount, StringFormat='/ 保留 {0}'}"
                                                        Foreground="Gray" VerticalAlignment="Center" FontSize="12"/>
+                                            <TextBlock Text="/ 含直播" Foreground="#5B9BD5"
+                                                       VerticalAlignment="Center" FontSize="12"
+                                                       IsVisible="{Binding IncludeLivestreams}"/>
+                                            <TextBlock Text="/ 音量正規化" Foreground="#5B9BD5"
+                                                       VerticalAlignment="Center" FontSize="12"
+                                                       IsVisible="{Binding NormalizeAudio}"/>
                                         </StackPanel>
                                         <TextBlock Text="{Binding Url}" Foreground="Gray" FontSize="11"
                                                    TextTrimming="CharacterEllipsis"
@@ -131,6 +137,9 @@
                                                        Foreground="Gray" VerticalAlignment="Center" FontSize="12"/>
                                             <TextBlock Text="/ 完整同步" Foreground="#5B9BD5"
                                                        VerticalAlignment="Center" FontSize="12"/>
+                                            <TextBlock Text="/ 音量正規化" Foreground="#5B9BD5"
+                                                       VerticalAlignment="Center" FontSize="12"
+                                                       IsVisible="{Binding NormalizeAudio}"/>
                                         </StackPanel>
                                         <TextBlock Text="{Binding Url}" Foreground="Gray" FontSize="11"
                                                    TextTrimming="CharacterEllipsis"
@@ -193,7 +202,7 @@
         <Border IsVisible="{Binding IsAddDialogOpen}"
                 Background="#80000000">
             <Border Background="White" CornerRadius="12" Padding="24"
-                    MaxWidth="480" MaxHeight="420"
+                    MaxWidth="480" MaxHeight="550"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     BoxShadow="0 4 24 #40000000">
                 <StackPanel Spacing="12">
@@ -217,6 +226,18 @@
                     <TextBlock Text="保留最新影片數量" FontSize="12" Foreground="Gray"/>
                     <NumericUpDown Value="{Binding NewChannelKeepCount}" Minimum="1" Maximum="50"
                                    Increment="1" FormatString="0"/>
+
+                    <CheckBox IsChecked="{Binding NewChannelIncludeLivestreams}" Margin="0,4,0,0">
+                        <TextBlock Text="包含直播影片" FontSize="13"/>
+                    </CheckBox>
+
+                    <CheckBox IsChecked="{Binding NewChannelNormalizeAudio}" Margin="0,0,0,0">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="音量正規化" FontSize="13"/>
+                            <TextBlock Text="自動平衡音量大小（適合演講、Podcast 等音量不一的內容）"
+                                       FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </CheckBox>
 
                     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
                         <Button Content="取消" Command="{Binding CancelAddChannelCommand}" Padding="16,8"/>
@@ -252,7 +273,7 @@
         <Border IsVisible="{Binding IsAddPlaylistDialogOpen}"
                 Background="#80000000">
             <Border Background="White" CornerRadius="12" Padding="24"
-                    MaxWidth="480" MaxHeight="360"
+                    MaxWidth="480" MaxHeight="440"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
                     BoxShadow="0 4 24 #40000000">
                 <StackPanel Spacing="12">
@@ -272,6 +293,14 @@
 
                     <TextBlock Text="裝置資料夾名稱" FontSize="12" Foreground="Gray"/>
                     <TextBox Text="{Binding NewPlaylistFolder}" Watermark="同播放清單名稱"/>
+
+                    <CheckBox IsChecked="{Binding NewPlaylistNormalizeAudio}" Margin="0,4,0,0">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="音量正規化" FontSize="13"/>
+                            <TextBlock Text="自動平衡音量大小（適合演講、Podcast 等音量不一的內容）"
+                                       FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </CheckBox>
 
                     <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
                         <Button Content="取消" Command="{Binding CancelAddPlaylistCommand}" Padding="16,8"/>

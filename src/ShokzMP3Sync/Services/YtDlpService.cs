@@ -106,10 +106,13 @@ public class YtDlpService
     /// Gets the latest N video IDs and titles from a channel.
     /// </summary>
     public async Task<List<VideoInfo>> GetLatestVideosAsync(string channelUrl, int count,
-        CancellationToken ct = default)
+        CancellationToken ct = default, bool includeLivestreams = false)
     {
-        // Use /videos tab to get only regular uploads (not shorts/live)
-        var tabUrl = channelUrl.TrimEnd('/') + "/videos";
+        // Without /videos suffix: all content (videos + livestreams) sorted by date
+        // With /videos suffix: only regular uploads (not shorts/live)
+        var tabUrl = includeLivestreams
+            ? channelUrl.TrimEnd('/')
+            : channelUrl.TrimEnd('/') + "/videos";
         var args = $"--flat-playlist --playlist-items 1:{count} --print id --print title \"{tabUrl}\"";
         var result = await RunAsync(args, ct);
 
@@ -166,7 +169,7 @@ public class YtDlpService
     /// Downloads a video as MP3 to the specified output directory.
     /// </summary>
     public async Task DownloadAsMp3Async(string videoId, string outputDir,
-        Action<string>? onProgress = null, CancellationToken ct = default)
+        Action<string>? onProgress = null, bool normalizeAudio = false, CancellationToken ct = default)
     {
         var outputTemplate = Path.Combine(outputDir, "%(title)s [%(id)s].%(ext)s");
         var args = $"-x --audio-format mp3 --audio-quality 128K " +
@@ -175,6 +178,45 @@ public class YtDlpService
                    $"\"https://www.youtube.com/watch?v={videoId}\"";
 
         await RunWithProgressAsync(args, onProgress, ct);
+
+        if (normalizeAudio)
+        {
+            // Find the downloaded file and normalize with ffmpeg
+            var downloaded = Directory.GetFiles(outputDir, $"*[{videoId}].mp3").FirstOrDefault();
+            if (downloaded != null)
+            {
+                onProgress?.Invoke("音量正規化中...");
+                var tempNorm = downloaded + ".norm.mp3";
+                var ffmpegPath = ResolveExecutable("ffmpeg");
+                var ffArgs = $"-i \"{downloaded}\" -af loudnorm=I=-16:TP=-1.5:LRA=11 -ab 128k -y \"{tempNorm}\"";
+                await RunFfmpegAsync(ffmpegPath, ffArgs, ct);
+                File.Delete(downloaded);
+                File.Move(tempNorm, downloaded);
+            }
+        }
+    }
+
+    private async Task RunFfmpegAsync(string ffmpegPath, string args, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo(ffmpegPath, args)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        EnrichPath(psi);
+
+        using var process = Process.Start(psi)
+                            ?? throw new InvalidOperationException("Failed to start ffmpeg");
+
+        await process.WaitForExitAsync(ct);
+
+        if (process.ExitCode != 0)
+        {
+            var error = await process.StandardError.ReadToEndAsync();
+            throw new InvalidOperationException($"ffmpeg failed (exit {process.ExitCode}): {error}");
+        }
     }
 
     private async Task<string> RunAsync(string args, CancellationToken ct)
