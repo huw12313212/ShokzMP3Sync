@@ -46,3 +46,5 @@ Both modes identify existing files by extracting YouTube video IDs from filename
 - Downloads go to temp directory first, then move to device (avoids corruption on disconnect)
 - Integration tests are a standalone console app (not xUnit/NUnit), run sequentially with real device + real YouTube API calls
 - The test project creates and cleans up `_test_sync` / `_test_playlist` folders on the device
+- **每個新功能都必須撰寫對應的整合測試來驗證功能正常**
+- Config 相關測試必須先備份再還原使用者的 config，不可覆蓋使用者設定

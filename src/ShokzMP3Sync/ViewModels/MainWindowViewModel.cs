@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -90,6 +91,18 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _hasMissingDependencies;
     [ObservableProperty] private string _missingDependenciesText = "";
 
+    // Latest feed fields
+    [ObservableProperty] private bool _latestFeedEnabled;
+    [ObservableProperty] private string _latestFeedFolderName = "最新動態";
+    [ObservableProperty] private double _latestFeedMinHours = 2.0;
+    [ObservableProperty] private string _latestFeedStatusText = "";
+
+    private bool _isInitializing;
+
+    partial void OnLatestFeedEnabledChanged(bool value) { if (!_isInitializing) SaveConfig(); }
+    partial void OnLatestFeedFolderNameChanged(string value) { if (!_isInitializing) SaveConfig(); }
+    partial void OnLatestFeedMinHoursChanged(double value) { if (!_isInitializing) SaveConfig(); }
+
     // Add channel dialog fields
     [ObservableProperty] private bool _isAddDialogOpen;
     [ObservableProperty] private string _newChannelUrl = "";
@@ -135,6 +148,15 @@ public partial class MainWindowViewModel : ObservableObject
             Playlists.Add(vm);
         }
 
+        _isInitializing = true;
+        if (_config.LatestFeed != null)
+        {
+            LatestFeedEnabled = _config.LatestFeed.Enabled;
+            LatestFeedFolderName = _config.LatestFeed.FolderName;
+            LatestFeedMinHours = _config.LatestFeed.MinHours;
+        }
+        _isInitializing = false;
+
         IsYtDlpAvailable = _ytDlpService.IsAvailable();
         var isFfmpegAvailable = YtDlpService.IsFfmpegAvailable();
 
@@ -176,6 +198,21 @@ public partial class MainWindowViewModel : ObservableObject
                 UpdateChannelCurrentCount(ch);
             foreach (var pl in Playlists)
                 UpdatePlaylistCurrentCount(pl);
+
+            if (_config.LatestFeed?.Enabled == true)
+            {
+                var feedDir = Path.Combine(_deviceService.GetDevicePath(_config.DeviceVolumeName), _config.LatestFeed.FolderName);
+                if (Directory.Exists(feedDir))
+                {
+                    var count = Directory.GetFiles(feedDir, "*.mp3")
+                        .Count(f => !Path.GetFileName(f).StartsWith("._"));
+                    LatestFeedStatusText = $"{count} 首";
+                }
+                else
+                {
+                    LatestFeedStatusText = "";
+                }
+            }
         }
         else
         {
@@ -389,7 +426,8 @@ public partial class MainWindowViewModel : ObservableObject
 
         IsSyncing = true;
         _syncCts = new CancellationTokenSource();
-        var totalItems = Channels.Count + Playlists.Count;
+        var hasLatestFeed = _config.LatestFeed?.Enabled == true;
+        var totalItems = Channels.Count + Playlists.Count + (hasLatestFeed ? 1 : 0);
 
         try
         {
@@ -427,6 +465,22 @@ public partial class MainWindowViewModel : ObservableObject
                 pl.IsSyncing = false;
                 pl.StatusText = FormatSyncResult(result);
                 UpdatePlaylistCurrentCount(pl);
+            }
+
+            // Sync latest feed
+            if (hasLatestFeed)
+            {
+                SyncStatusText = "正在建立最新動態...";
+                var feedResult = await _syncService.SyncLatestFeedAsync(
+                    _config.LatestFeed!, _config.DeviceVolumeName,
+                    _config.Channels,
+                    status => SyncStatusText = status,
+                    progress => SyncProgress = (idx + progress) / totalItems,
+                    _syncCts.Token);
+
+                LatestFeedStatusText = $"{feedResult.Downloaded} 首";
+                if (feedResult.Errors.Any())
+                    LatestFeedStatusText += $" (錯誤 {feedResult.Errors.Count})";
             }
 
             SyncStatusText = "同步完成!";
@@ -499,6 +553,12 @@ public partial class MainWindowViewModel : ObservableObject
     {
         _config.Channels = Channels.Select(c => c.ToConfig()).ToList();
         _config.Playlists = Playlists.Select(p => p.ToConfig()).ToList();
+        _config.LatestFeed = new LatestFeedConfig
+        {
+            Enabled = LatestFeedEnabled,
+            FolderName = LatestFeedFolderName,
+            MinHours = LatestFeedMinHours
+        };
         _configService.Save(_config);
     }
 

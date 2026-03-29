@@ -132,6 +132,40 @@ public class YtDlpService
     }
 
     /// <summary>
+    /// Gets the latest N videos with upload dates and durations (slower, no --flat-playlist).
+    /// Used for the "latest feed" feature to enable cross-channel date sorting.
+    /// </summary>
+    public async Task<List<VideoInfo>> GetLatestVideosWithDateAsync(string channelUrl, int count,
+        CancellationToken ct = default, bool includeLivestreams = false)
+    {
+        var tabUrl = includeLivestreams
+            ? channelUrl.TrimEnd('/')
+            : channelUrl.TrimEnd('/') + "/videos";
+        var args = $"--playlist-items 1:{count} --skip-download --print id --print title --print upload_date --print duration --ignore-errors \"{tabUrl}\"";
+        var result = await RunAsync(args, ct, tolerateErrors: true);
+
+        var lines = result.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var videos = new List<VideoInfo>();
+
+        for (int i = 0; i + 3 < lines.Length; i += 4)
+        {
+            var uploadDate = lines[i + 2].Trim();
+            if (uploadDate == "NA") uploadDate = "";
+            int.TryParse(lines[i + 3].Trim().Split('.')[0], out var duration);
+
+            videos.Add(new VideoInfo
+            {
+                Id = lines[i].Trim(),
+                Title = lines[i + 1].Trim(),
+                UploadDate = uploadDate,
+                DurationSeconds = duration
+            });
+        }
+
+        return videos;
+    }
+
+    /// <summary>
     /// Gets all video IDs and titles from a YouTube playlist.
     /// </summary>
     public async Task<List<VideoInfo>> GetPlaylistVideosAsync(string playlistUrl, CancellationToken ct = default)
@@ -219,7 +253,7 @@ public class YtDlpService
         }
     }
 
-    private async Task<string> RunAsync(string args, CancellationToken ct)
+    private async Task<string> RunAsync(string args, CancellationToken ct, bool tolerateErrors = false)
     {
         var psi = new ProcessStartInfo(_ytDlpPath, args)
         {
@@ -236,7 +270,7 @@ public class YtDlpService
         var output = await process.StandardOutput.ReadToEndAsync();
         await process.WaitForExitAsync(ct);
 
-        if (process.ExitCode != 0)
+        if (process.ExitCode != 0 && !tolerateErrors)
         {
             var error = await process.StandardError.ReadToEndAsync();
             throw new InvalidOperationException($"yt-dlp failed (exit {process.ExitCode}): {error}");

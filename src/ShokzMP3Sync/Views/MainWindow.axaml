@@ -177,6 +177,34 @@
                            IsVisible="{Binding !Playlists.Count}"
                            Foreground="Gray" HorizontalAlignment="Center" Margin="0,20"/>
 
+                <!-- Latest Feed Section -->
+                <Border Classes="card" Margin="0,8,0,0">
+                    <StackPanel Spacing="8">
+                        <CheckBox IsChecked="{Binding LatestFeedEnabled}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="最新動態資料夾" FontWeight="SemiBold" FontSize="14"/>
+                                <TextBlock Text="{Binding LatestFeedStatusText}" Foreground="Gray"
+                                           VerticalAlignment="Center" FontSize="12"
+                                           IsVisible="{Binding LatestFeedStatusText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+                        </CheckBox>
+                        <StackPanel IsVisible="{Binding LatestFeedEnabled}" Spacing="8" Margin="28,0,0,0">
+                            <TextBlock Text="從所有頻道收集最新上傳，按時間排序放入一個資料夾"
+                                       FontSize="11" Foreground="Gray"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="資料夾名稱" VerticalAlignment="Center" FontSize="12"/>
+                                <TextBox Text="{Binding LatestFeedFolderName}" Width="150" FontSize="12"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="最少時數" VerticalAlignment="Center" FontSize="12"/>
+                                <NumericUpDown Value="{Binding LatestFeedMinHours}" Minimum="0.5" Maximum="24"
+                                               Increment="0.5" FormatString="0.0" Width="140" FontSize="12"/>
+                                <TextBlock Text="小時" VerticalAlignment="Center" FontSize="12" Foreground="Gray"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <!-- Sync All -->
                 <Border Classes="card" Margin="0,8,0,0">
                     <StackPanel Spacing="8">

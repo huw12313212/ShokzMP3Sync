@@ -17,7 +17,7 @@ class Program
     // 股癌 channel for real tests
     private const string TestChannelUrl = "https://www.youtube.com/@Gooaye";
     private const string TestChannelName = "股癌";
-    private const string ExistingFolder = "股癌";
+    private const string ExistingFolder = "Gooaye 股癌";
     // Playlist for real tests
     private const string TestPlaylistUrl = "https://www.youtube.com/watch?v=1j_mpwKmlJg&list=PL42Zkfzw-NHlsAR5g3MRY79dipqI9HQLg";
     private const string PlaylistTestFolder = "_test_playlist";
@@ -92,6 +92,13 @@ class Program
         await RunTest("12.1 不含直播 - 只取得一般影片", TestVideosWithoutLivestreams);
         await RunTest("12.2 含直播 - 取得直播+一般影片", TestVideosWithLivestreams);
         await RunTest("12.3 Config 持久化 IncludeLivestreams 設定", TestConfigIncludeLivestreams);
+
+        // Phase 13: Latest feed
+        await RunTest("13.1 取得含日期的影片清單", TestGetVideosWithDate);
+        await RunTest("13.2 最新動態資料夾建立與排序", TestLatestFeedSync);
+        await RunTest("13.3 驗證數字前綴排序正確", TestLatestFeedOrdering);
+        await RunTest("13.4 Config 持久化 LatestFeedConfig", TestConfigLatestFeed);
+        await RunTest("13.5 清理最新動態測試資料夾", TestCleanupLatestFeed);
 
         // Summary
         Console.WriteLine("\n" + new string('=', 50));
@@ -825,6 +832,135 @@ class Program
         {
             RestoreConfig();
         }
+        return Task.CompletedTask;
+    }
+
+    // ===== Phase 13: Latest feed =====
+
+    private const string LatestFeedTestFolder = "_test_latest_feed";
+
+    static async Task TestGetVideosWithDate()
+    {
+        var svc = new YtDlpService();
+        var videos = await svc.GetLatestVideosWithDateAsync(TestChannelUrl, 3);
+        Assert(videos.Count > 0, "無法取得影片");
+        foreach (var v in videos)
+        {
+            Assert(!string.IsNullOrEmpty(v.Id), "影片 ID 為空");
+            Assert(!string.IsNullOrEmpty(v.Title), "影片標題為空");
+            Assert(!string.IsNullOrEmpty(v.UploadDate), $"影片 {v.Title} 沒有上傳日期");
+            Assert(v.UploadDate.Length == 8, $"上傳日期格式不正確: {v.UploadDate}");
+            Assert(v.DurationSeconds > 0, $"影片 {v.Title} 沒有時長");
+        }
+        Console.Write($"[{videos.Count} 部, 日期: {videos[0].UploadDate}, 時長: {videos[0].DurationSeconds}s] ");
+    }
+
+    static async Task TestLatestFeedSync()
+    {
+        var ytDlp = new YtDlpService();
+        var device = new DeviceService();
+        var sync = new SyncService(ytDlp, device);
+
+        // First, sync 2 videos from channel to device
+        var channel = new ChannelConfig
+        {
+            Url = TestChannelUrl,
+            Name = TestChannelName,
+            FolderName = "_test_ch_for_feed",
+            KeepCount = 2
+        };
+
+        var chResult = await sync.SyncChannelAsync(channel, VolumeName,
+            status => Console.Write("."),
+            progress => { });
+        Assert(chResult.Downloaded == 2, $"頻道同步預期下載 2，實際 {chResult.Downloaded}");
+
+        // Now sync latest feed
+        var feedConfig = new LatestFeedConfig
+        {
+            Enabled = true,
+            FolderName = LatestFeedTestFolder,
+            MinHours = 0.01 // Very small so we just need a few videos
+        };
+
+        var feedResult = await sync.SyncLatestFeedAsync(
+            feedConfig, VolumeName,
+            new List<ChannelConfig> { channel },
+            status => Console.Write("."),
+            progress => { });
+
+        Assert(feedResult.Downloaded > 0, $"最新動態未複製任何檔案");
+        Console.Write($"\n    [複製 {feedResult.Downloaded} 首到 {LatestFeedTestFolder}] ");
+    }
+
+    static Task TestLatestFeedOrdering()
+    {
+        var device = new DeviceService();
+        var feedDir = Path.Combine(device.GetDevicePath(VolumeName), LatestFeedTestFolder);
+        Assert(Directory.Exists(feedDir), "最新動態資料夾不存在");
+
+        var files = Directory.GetFiles(feedDir, "*.mp3")
+            .Where(f => !Path.GetFileName(f).StartsWith("._"))
+            .OrderBy(f => f).ToArray();
+        Assert(files.Length > 0, "最新動態資料夾沒有檔案");
+
+        // Verify numbered prefix format
+        for (int i = 0; i < files.Length; i++)
+        {
+            var name = Path.GetFileName(files[i]);
+            var expectedPrefix = $"{i + 1:D3}_";
+            Assert(name.StartsWith(expectedPrefix),
+                $"檔案 {name} 應以 {expectedPrefix} 開頭");
+        }
+
+        // Verify video IDs are still extractable (regex should work)
+        var ids = device.GetExistingVideoIds(VolumeName, LatestFeedTestFolder);
+        Assert(ids.Count == files.Length, $"ID 提取數量不一致: {ids.Count} vs {files.Length}");
+
+        Console.Write($"[{files.Length} 個檔案, 前綴正確, ID 可提取] ");
+        return Task.CompletedTask;
+    }
+
+    static Task TestConfigLatestFeed()
+    {
+        BackupConfig();
+        try
+        {
+            var svc = new ConfigService();
+            var config = new AppConfig
+            {
+                LatestFeed = new LatestFeedConfig
+                {
+                    Enabled = true,
+                    FolderName = "最新動態",
+                    MinHours = 3.5
+                }
+            };
+            svc.Save(config);
+
+            var loaded = svc.Load();
+            Assert(loaded.LatestFeed != null, "LatestFeed 為 null");
+            Assert(loaded.LatestFeed!.Enabled == true, "Enabled 應為 true");
+            Assert(loaded.LatestFeed.FolderName == "最新動態", $"FolderName 不正確: {loaded.LatestFeed.FolderName}");
+            Assert(Math.Abs(loaded.LatestFeed.MinHours - 3.5) < 0.01, $"MinHours 不正確: {loaded.LatestFeed.MinHours}");
+            Console.Write("[LatestFeedConfig 持久化正確] ");
+        }
+        finally
+        {
+            RestoreConfig();
+        }
+        return Task.CompletedTask;
+    }
+
+    static Task TestCleanupLatestFeed()
+    {
+        var device = new DeviceService();
+        device.DeleteFolderIfExists(VolumeName, LatestFeedTestFolder);
+        device.DeleteFolderIfExists(VolumeName, "_test_ch_for_feed");
+        var path1 = Path.Combine(device.GetDevicePath(VolumeName), LatestFeedTestFolder);
+        var path2 = Path.Combine(device.GetDevicePath(VolumeName), "_test_ch_for_feed");
+        Assert(!Directory.Exists(path1), "清理最新動態測試資料夾失敗");
+        Assert(!Directory.Exists(path2), "清理頻道測試資料夾失敗");
         return Task.CompletedTask;
     }
 
