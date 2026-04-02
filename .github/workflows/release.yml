@@ -23,6 +23,9 @@ jobs:
       - name: Build .app bundle
         run: bash build-app.sh
 
+      - name: Ad-hoc code sign
+        run: codesign --force --deep -s - build/ShokzMP3Sync.app
+
       - name: Package as zip
         run: cd build && zip -r ShokzMP3Sync-macos-arm64.zip ShokzMP3Sync.app
 
@@ -31,3 +34,15 @@ jobs:
         with:
           files: build/ShokzMP3Sync-macos-arm64.zip
           generate_release_notes: true
+          body: |
+            ## 安裝方式
+
+            1. 下載 `ShokzMP3Sync-macos-arm64.zip` 並解壓縮
+            2. 將 `ShokzMP3Sync.app` 拖入 `/Applications/`
+            3. 開啟終端機執行以下指令解除 macOS 隔離限制：
+            ```bash
+            xattr -cr /Applications/ShokzMP3Sync.app
+            ```
+            4. 雙擊開啟即可使用
+
+            > 需要先安裝 yt-dlp 和 ffmpeg：`brew install yt-dlp ffmpeg`
