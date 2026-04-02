@@ -24,7 +24,7 @@ External tools required: `yt-dlp` and `ffmpeg` (install via `brew install yt-dlp
 
 ## Architecture
 
-.NET 7 + Avalonia UI 11 desktop app using MVVM pattern (CommunityToolkit.Mvvm).
+.NET 9 + Avalonia UI 11 desktop app using MVVM pattern (CommunityToolkit.Mvvm).
 
 **Two sync modes with different deletion logic:**
 - **Channel sync** (`SyncChannelAsync`): keeps latest N videos per channel; deletes anything older than N.

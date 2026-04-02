@@ -76,7 +76,7 @@ brew install yt-dlp ffmpeg
 
 ### 開發環境（僅從原始碼建置時需要）
 
-- [.NET 7 SDK](https://dotnet.microsoft.com/download/dotnet/7.0)
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
 
 ## 安裝
 
@@ -156,7 +156,7 @@ src/ShokzMP3Sync/
 
 ## 技術棧
 
-- .NET 7 + Avalonia UI 11
+- .NET 9 + Avalonia UI 11
 - CommunityToolkit.Mvvm (MVVM)
 - yt-dlp + ffmpeg (下載轉檔)
 - 本專案由 [Claude Code](https://claude.ai/code) 協助開發

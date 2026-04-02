@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="ShokzMP3Sync"
-PUBLISH_DIR="src/ShokzMP3Sync/bin/Release/net7.0/osx-arm64/publish"
+PUBLISH_DIR="src/ShokzMP3Sync/bin/Release/net9.0/osx-arm64/publish"
 APP_BUNDLE="build/${APP_NAME}.app"
 
 echo "=== Building ${APP_NAME}.app ==="
