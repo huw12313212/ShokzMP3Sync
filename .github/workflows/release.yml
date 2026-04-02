@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Install yt-dlp and ffmpeg
+        run: brew install yt-dlp ffmpeg
+
+      - name: Build .app bundle
+        run: bash build-app.sh
+
+      - name: Package as zip
+        run: cd build && zip -r ShokzMP3Sync-macos-arm64.zip ShokzMP3Sync.app
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/ShokzMP3Sync-macos-arm64.zip
+          generate_release_notes: true
